@@ -22,8 +22,8 @@ aside{width:250px;border-right:1px solid var(--bd);background:var(--pn);display:
 .it span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.it i{color:var(--mu);font-style:normal;padding:0 4px}
 #stage{flex:1;position:relative;min-width:0}
 #cv{position:absolute;inset:0;width:100%;height:100%}
-#msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--mu);font-size:14px;padding:20px;pointer-events:none}
-#ctl{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:rgba(0,0,0,.45);font-size:12px}#ctl>span{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#ctl input[type=text],#ctl select{font:inherit;font-size:13px;padding:7px 8px;border:1px solid var(--bd);background:var(--pn);color:var(--tx);border-radius:8px;max-width:190px}
+#inf{position:absolute;top:6px;left:8px;right:8px;z-index:2;font-size:11px;line-height:1.35;color:#a9a9bd;white-space:pre-wrap;pointer-events:none;text-shadow:0 0 3px #000}#msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--mu);font-size:14px;padding:20px;pointer-events:none}
+#ctl{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:#14141b;border-top:1px solid var(--bd);font-size:12px}#ctl>span{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#ctl input[type=text],#ctl select{font:inherit;font-size:13px;padding:7px 8px;border:1px solid var(--bd);background:var(--pn);color:var(--tx);border-radius:8px;max-width:190px}
 #ctl label{display:flex;align-items:center;gap:6px}#ctl input[type=color]{width:34px;height:26px;border:0;padding:0;background:none}
 @media(max-width:700px){main{flex-direction:column}aside{width:100%;height:36%;border-right:0;border-bottom:1px solid var(--bd)}}
 </style>
@@ -36,7 +36,7 @@ aside{width:250px;border-right:1px solid var(--bd);background:var(--pn);display:
  <input type="file" id="file" accept=".dff,.txd" multiple hidden><small>Select the .dff and .txd files together (same file name).</small></div>
  <div id="list"></div>
 </aside>
-<div id="stage"><canvas id="cv"></canvas><div id="msg">Loading 3D engine…</div>
+<div id="stage"><canvas id="cv"></canvas><div id="inf"></div><div id="msg">Loading 3D engine…</div>
  <div id="ctl"><span id="sk"><button id="ifpb">Upload ped.ifp</button><input type="file" id="ifpf" accept=".ifp" hidden><input type="text" id="flt" placeholder="Search animation"><select id="anim"></select><button id="flp" class="on">Flip rot: On</button></span><span id="cr" style="display:none"><button id="drv">Drive: Off</button><button id="opn">Open all: Off</button></span></div>
 </div>
 </main>
@@ -97,13 +97,13 @@ function dxt(d,w,h,f,px){
    const c=cl[(bits>>>(i*2))&3];let A=c[3];if(f==3)A=((d[o+(i>>1)]>>((i&1)*4))&15)*17;else if(f==5)A=al5(d,o,i);
    const q=(y*w+x)*4;px[q]=c[0];px[q+1]=c[1];px[q+2]=c[2];px[q+3]=A}}}
 function parseTXD(buf){
- const dv=new DataView(buf),out={},top=kids(dv,0,buf.byteLength).find(c=>c.t==0x16);if(!top)throw Error('not a TXD');
+ txdErr=[];const dv=new DataView(buf),out={},top=kids(dv,0,buf.byteLength).find(c=>c.t==0x16);if(!top)throw Error('not a TXD');
  kids(dv,top.o,top.o+top.s).filter(c=>c.t==0x15).forEach(n=>{
   try{
   const o=kids(dv,n.o,n.o+n.s)[0].o,plat=dv.getUint32(o,true),name=str(dv,o+8,32).toLowerCase(),rf=dv.getUint32(o+72,true),df=dv.getUint32(o+76,true);
   const w=dv.getUint16(o+80,true),h=dv.getUint16(o+82,true),dp=dv.getUint8(o+84),cf=dv.getUint8(o+87);let p=o+88,f=0;
   if(plat==9){f=df==0x31545844?1:df==0x33545844?3:df==0x35545844?5:0}else if(cf==1||cf==3||cf==5)f=cf;
-  let pal=null;if(rf&0x2000){pal=new Uint8Array(buf,p,1024);p+=1024}else if(rf&0x4000){pal=new Uint8Array(buf,p,64);p+=64}
+  let pal=null;if(!f&&(rf&0x2000)){pal=new Uint8Array(buf,p,1024);p+=1024}else if(!f&&(rf&0x4000)){pal=new Uint8Array(buf,p,64);p+=64}
   p+=4;const d=new Uint8Array(buf,p),px=new Uint8Array(w*h*4);
   if(f)dxt(d,w,h,f,px);
   else if(rf&0x2000){for(let i=0;i<w*h;i++){const k=d[i]*4;px.set([pal[k],pal[k+1],pal[k+2],pal[k+3]],i*4)}}
@@ -115,7 +115,7 @@ function parseTXD(buf){
    else{px[q]=(v>>10&31)*255/31;px[q+1]=(v>>5&31)*255/31;px[q+2]=(v&31)*255/31;px[q+3]=v&0x8000?255:0}}}
   let a=false;for(let i=3;i<px.length;i+=4)if(px[i]<250){a=true;break}
   const t=new THREE.DataTexture(px,w,h,THREE.RGBAFormat);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.minFilter=t.magFilter=THREE.LinearFilter;t.encoding=THREE.sRGBEncoding;t.needsUpdate=true;t.userData.a=a;out[name]=t;
-  }catch(e){console.warn('texture failed',e)}});
+  }catch(e){txdErr.push(e.message)}});
  return out}
 // ---------- scene
 const cv=$('cv'),R=new THREE.WebGLRenderer({canvas:cv,antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.outputEncoding=THREE.sRGBEncoding;
@@ -130,11 +130,11 @@ const OC={target:new V(),az:0,pol:1.47,dist:5,minD:1,maxD:10,
  const up=e=>{P.delete(e.pointerId);pd=0};cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
  cv.addEventListener("wheel",e=>{e.preventDefault();OC.dist=cl(OC.dist*Math.exp(e.deltaY*.001))},{passive:false})})();
 const face=new THREE.Group(),holder=new THREE.Group();face.rotation.y=Math.PI;holder.rotation.x=-Math.PI/2;face.add(holder);S.add(face);
-function resize(){const s=$('stage');R.setSize(s.clientWidth,s.clientHeight,false);C.aspect=s.clientWidth/s.clientHeight;C.updateProjectionMatrix()}
-new ResizeObserver(resize).observe($('stage'));
+function resize(){const s=$('stage'),h=Math.max(60,s.clientHeight-$('ctl').offsetHeight);cv.style.height=h+'px';R.setSize(s.clientWidth,h,false);C.aspect=s.clientWidth/h;C.updateProjectionMatrix()}
+new ResizeObserver(resize).observe($('stage'));new ResizeObserver(resize).observe($('ctl'));
 function say(t){$('msg').style.display=t?'flex':'none';$('msg').textContent=t||''}
 // ---------- IFP (ANP3)
-let ifp=null,flip=true,boneById={},anim=null,at=0,ground=null,drive=false,openT=0,openV=0,doors=[];
+let txdErr=[],infBase='',ifp=null,flip=true,boneById={},anim=null,at=0,ground=null,drive=false,openT=0,openV=0,doors=[];
 const AX=[new V(1,0,0),new V(0,1,0),new V(0,0,1)],qa=new THREE.Quaternion(),qb=new THREE.Quaternion(),qr=new THREE.Quaternion();
 function parseIFP(buf){const dv=new DataView(buf);if(dv.getUint32(0,true)!=0x33504E41)throw Error('not an ANP3 file (ped.ifp)');
  const n=dv.getUint32(0x20,true),out=[];let p=0x24;
@@ -153,17 +153,20 @@ function applyAnim(t){anim.bones.forEach(b=>{const o=boneById[b.id];if(!o||!b.nf
 function restPose(){Object.values(boneById).forEach(o=>{o.position.copy(o.userData.rp);o.quaternion.copy(o.userData.rq)})}
 function fillAnim(){const q=$('flt').value.toLowerCase(),s=$('anim');s.innerHTML='';const z=document.createElement('option');z.value=-1;z.textContent='No animation';s.appendChild(z);
  if(ifp)ifp.forEach((a,i)=>{if(a.name.toLowerCase().includes(q)){const o=document.createElement('option');o.value=i;o.textContent=a.name;s.appendChild(o)}})}
-function pick(v){v=+v;restPose();anim=v>=0&&ifp?ifp[v]:null;at=0}
+function showInfo(){$('inf').textContent=infBase+(anim?'\nAnim: '+anim.name+' ('+anim.bones.filter(b=>boneById[b.id]).length+'/'+anim.bones.length+' bones matched)':'')}
+function pick(v){v=+v;restPose();anim=v>=0&&ifp?ifp[v]:null;at=0;showInfo()}
 const roadTex=(()=>{const c=document.createElement('canvas');c.width=64;c.height=256;const x=c.getContext('2d');x.fillStyle='#2b2b33';x.fillRect(0,0,64,256);x.fillStyle='#ddd';x.fillRect(30,0,4,128);x.fillRect(2,0,2,256);x.fillRect(60,0,2,256);
  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1,10);return t})();
 function build(){
  holder.clear();wheels=[];doors=[];boneById={};anim=null;openV=0;if(ground){S.remove(ground);ground=null}
  const it=cur;if(!it||!it.dff)return;
  let D,T={};try{D=parseDFF(it.dff)}catch(e){return say('Could not read DFF: '+e.message)}
- if(it.txd){try{T=parseTXD(it.txd)}catch(e){say('TXD error: '+e.message)}}
+ if(it.txd){try{T=parseTXD(it.txd)}catch(e){txdErr.push('parse: '+e.message)}}
  const car=it.type=='car';
+ const need=new Set(),hit=new Set(),norm=s=>s.replace(/[^a-z0-9]/g,''),TN={};Object.keys(T).forEach(k=>TN[norm(k)]=T[k]);
+ const ftex=n=>{if(n)need.add(n);const t=n?(T[n]||TN[norm(n)]):null;if(t)hit.add(n);return t};
  const mat=m=>{if(!m)return new THREE.MeshBasicMaterial({color:0x888888});
-  const tx=T[m.tex],M=new THREE.MeshLambertMaterial({map:tx||null,side:THREE.DoubleSide,alphaTest:.1,transparent:!!(tx&&tx.userData.a)}),k=m.col.slice(0,3).join();
+  const tx=ftex(m.tex),M=new THREE.MeshLambertMaterial({map:tx||null,side:THREE.DoubleSide,alphaTest:.1,transparent:!!(tx&&tx.userData.a)}),k=m.col.slice(0,3).join();
   if(car&&k=='60,255,0')M.color.set(0xb02a2a);else if(car&&k=='255,0,175')M.color.set(0xe8e8e8);else M.color.setRGB(m.col[0]/255,m.col[1]/255,m.col[2]/255);return M};
  const objs=D.frames.map(f=>{const o=new THREE.Bone(),m=f.m;o.name=f.name;
   new THREE.Matrix4().makeBasis(new V(m[0],m[1],m[2]),new V(m[3],m[4],m[5]),new V(m[6],m[7],m[8])).setPosition(m[9],m[10],m[11]).decompose(o.position,o.quaternion,o.scale);
@@ -188,8 +191,9 @@ function build(){
  face.updateMatrixWorld(true);
  const b=new THREE.Box3().setFromObject(face),s=b.getSize(new V()),c=b.getCenter(new V()),r=Math.max(s.x,s.y,s.z)||1;
  if(car){ground=new THREE.Mesh(new THREE.PlaneGeometry(12,40),new THREE.MeshBasicMaterial({map:roadTex}));ground.rotation.x=-Math.PI/2;ground.position.set(c.x,b.min.y-.01,c.z);ground.visible=drive;S.add(ground)}
- OC.target.copy(c);OC.dist=r*1.5;OC.minD=r*.8;OC.maxD=r*3;OC.az=car?.5:0;C.near=r/100;C.far=r*60;C.updateProjectionMatrix();OC.update();
+ OC.target.copy(c);OC.dist=r*(car?1.5:1.75);OC.minD=r*.8;OC.maxD=r*3;OC.az=car?.5:0;C.near=r/100;C.far=r*60;C.updateProjectionMatrix();OC.update();
  say('');
+ infBase='TXD: '+(it.txd?Object.keys(T).length+' textures':'none')+' | matched '+hit.size+'/'+need.size+(hit.size<need.size?'\nMissing: '+[...need].filter(n=>!hit.has(n)).slice(0,6).join(', '):'')+(txdErr.length?'\nTXD errors: '+txdErr.slice(0,2).join(' ; '):'')+(car?'\nWheels '+wheels.length+' | doors '+doors.length:'\nSkeleton: '+(sk.length?'skinned':'NOT skinned')+' | bone frames '+Object.keys(boneById).length+' | hierarchy '+(hf?hf.hier.length:0)+' | IFP '+(ifp?ifp.length:'none'));showInfo();
  if(!car&&ifp){const i=ifp.findIndex(a=>a.name.toLowerCase()=='idle_stance');if(i>=0){$('anim').value=i;pick(i)}}}
 function renderList(){const L=$('list');L.innerHTML='';
  items.filter(i=>i.type==tab).sort((a,b)=>a.num-b.num).forEach(it=>{const d=document.createElement('div');d.className='it'+(cur&&cur.key==it.key?' on':'');
@@ -213,7 +217,7 @@ $('flp').onclick=()=>{flip=!flip;$('flp').classList.toggle('on',flip);$('flp').t
 $('drv').onclick=()=>{drive=!drive;$('drv').classList.toggle('on',drive);$('drv').textContent='Drive: '+(drive?'On':'Off');if(ground)ground.visible=drive};
 $('opn').onclick=()=>{openT=openT?0:1;$('opn').classList.toggle('on',!!openT);$('opn').textContent='Open all: '+(openT?'On':'Off')};
 function setTab(t){tab=t;cur=null;holder.clear();if(ground){S.remove(ground);ground=null}wheels=[];doors=[];say('Pick a model from the list');
- $('tS').classList.toggle('on',t=='skin');$('tC').classList.toggle('on',t=='car');$('sk').style.display=t=='skin'?'flex':'none';$('cr').style.display=t=='car'?'flex':'none';renderList()}
+ $('tS').classList.toggle('on',t=='skin');$('tC').classList.toggle('on',t=='car');$('sk').style.display=t=='skin'?'flex':'none';$('cr').style.display=t=='car'?'flex':'none';renderList();resize()}
 $('tS').onclick=()=>setTab('skin');$('tC').onclick=()=>setTab('car');
 const clock=new THREE.Clock();
 (function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.1);
